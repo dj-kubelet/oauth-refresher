@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: oauth-refresher
+  name: oauth-refresher
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oauth-refresher
+  template:
+    metadata:
+      labels:
+        app: oauth-refresher
+    spec:
+      serviceAccountName: oauth-refresher
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65535
+        runAsGroup: 65535
+        fsGroup: 65535
+
+      containers:
+      - image: djkubelet/oauth-refresher:latest
+        name: oauth-refresher
+        imagePullPolicy: IfNotPresent
+        args:
+        - --labelSelector=dj-kubelet.com/oauth-refresher=spotify
+        env:
+        - name: CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: oauth-refresher
+              key: CLIENT_ID
+        - name: CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: oauth-refresher
+              key: CLIENT_SECRET
+        securityContext:
+          readOnlyRootFilesystem: true
+        resources:
+          limits:
+            cpu: 10m
+            memory: 20Mi
+          requests:
+            cpu: 10m
+            memory: 20Mi
