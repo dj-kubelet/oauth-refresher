@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -12,7 +11,6 @@ import (
 	"time"
 
 	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/spotify"
 
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -23,41 +21,44 @@ import (
 )
 
 var (
-	ctx           context.Context
-	conf          *oauth2.Config
 	labelSelector string
+	clientID      string
+	clientSecret  string
+	authURL       string
+	tokenURL      string
+	conf          *oauth2.Config
+	clientset     *kubernetes.Clientset
 )
-
-var clientset *kubernetes.Clientset
 
 func setup() {
 	flag.StringVar(&labelSelector, "labelSelector", "dj-kubelet.com/oauth-refresher=spotify", "")
 	flag.Parse()
 
-	clientID, ok := os.LookupEnv("CLIENT_ID")
+	ok := false
+	clientID, ok = os.LookupEnv("CLIENT_ID")
 	if !ok {
 		log.Fatalln("env CLIENT_ID not set")
 	}
-	clientSecret, ok := os.LookupEnv("CLIENT_SECRET")
+	clientSecret, ok = os.LookupEnv("CLIENT_SECRET")
 	if !ok {
 		log.Fatalln("env CLIENT_SECRET not set")
 	}
+	authURL, ok = os.LookupEnv("AUTH_URL")
+	if !ok {
+		log.Fatalln("env AUTH_URL not set")
+	}
+	tokenURL, ok = os.LookupEnv("TOKEN_URL")
+	if !ok {
+		log.Fatalln("env TOKEN_URL not set")
+	}
 
-	ctx = context.Background()
 	conf = &oauth2.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
-		Scopes: []string{
-			// Provide info about which user that's signed in.
-			"user-read-private",
-			// Not used but could be useful?
-			"user-read-currently-playing",
-			// To read the current playing song
-			"user-read-playback-state",
-			// For switching song
-			"user-modify-playback-state",
+		Endpoint: oauth2.Endpoint{
+			AuthURL:  authURL,
+			TokenURL: tokenURL,
 		},
-		Endpoint: spotify.Endpoint,
 	}
 
 	config, err := rest.InClusterConfig()
@@ -101,14 +102,11 @@ func refresh() {
 func refreshSingle(secret apiv1.Secret) {
 	log.Printf("Starting refresh of: %s/%s", secret.Namespace, secret.Name)
 
-	// reconstruct oauth2 object
-	//expiry, _ := time.Parse(time.RFC3339, string(secret.Data["expiry"]))
-	// Force expiry
-	expiry := time.Now()
+	// Reconstruct Oauth2 object that has expired
 	token := &oauth2.Token{
 		AccessToken:  string(secret.Data["accesstoken"]),
 		RefreshToken: string(secret.Data["refreshtoken"]),
-		Expiry:       expiry,
+		Expiry:       time.Now(),
 	}
 
 	newToken, err := conf.TokenSource(oauth2.NoContext, token).Token()
@@ -121,7 +119,7 @@ func refreshSingle(secret apiv1.Secret) {
 		log.Println("Access token has changed")
 	}
 
-	if secret.Name != "" && secret.Namespace != "" && clientset != nil {
+	if clientset != nil {
 		patch := []patchOperation{
 			patchOperation{
 				Op:    "add",

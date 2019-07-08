@@ -38,6 +38,16 @@ spec:
             secretKeyRef:
               name: oauth-refresher
               key: CLIENT_SECRET
+        - name: AUTH_URL
+          valueFrom:
+            secretKeyRef:
+              name: oauth-refresher
+              key: AUTH_URL
+        - name: TOKEN_URL
+          valueFrom:
+            secretKeyRef:
+              name: oauth-refresher
+              key: TOKEN_URL
         securityContext:
           readOnlyRootFilesystem: true
         resources:
