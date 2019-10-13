@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "oauth-refresher.fullname" . }}
+  labels:
+{{ include "oauth-refresher.labels" . | indent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "oauth-refresher.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "oauth-refresher.name" . }}
+        app.kubernetes.io/instance: {{ .Release.Name }}
+
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65535
+        runAsGroup: 65535
+        fsGroup: 65535
+
+    {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+
+      serviceAccountName: {{ include "oauth-refresher.fullname" . }}
+
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+          - --labelSelector=dj-kubelet.com/oauth-refresher=spotify
+          env:
+          - name: CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "oauth-refresher.fullname" . }}
+                key: CLIENT_ID
+          - name: CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "oauth-refresher.fullname" . }}
+                key: CLIENT_SECRET
+          - name: AUTH_URL
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "oauth-refresher.fullname" . }}
+                key: AUTH_URL
+          - name: TOKEN_URL
+            valueFrom:
+              secretKeyRef:
+                name: {{ include "oauth-refresher.fullname" . }}
+                key: TOKEN_URL
+
+          securityContext:
+            readOnlyRootFilesystem: true
+
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+
+    {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
+
+    {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+    {{- end }}
