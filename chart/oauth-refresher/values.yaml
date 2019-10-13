@@ -1,0 +1,28 @@
+replicaCount: 1
+
+image:
+  repository: djkubelet/oauth-refresher
+  tag: latest
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+resources:
+  limits:
+    cpu: 10m
+    memory: 20Mi
+  requests:
+    cpu: 10m
+    memory: 20Mi
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}
+
+oauth:
+  authUrl: "https://accounts.spotify.com/authorize"
+  tokenUrl: "https://accounts.spotify.com/api/token"
