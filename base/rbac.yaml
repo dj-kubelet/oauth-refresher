@@ -1,14 +1,14 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: {{ include "oauth-refresher.fullname" . }}
+  name: oauth-refresher
 
 ---
 
 kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1beta1
 metadata:
-  name: {{ include "oauth-refresher.fullname" . }}
+  name: oauth-refresher
 rules:
 - apiGroups:
   - ""
@@ -32,12 +32,12 @@ rules:
 kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1beta1
 metadata:
-  name: {{ include "oauth-refresher.fullname" . }}
+  name: oauth-refresher
 subjects:
 - kind: ServiceAccount
-  name: {{ include "oauth-refresher.fullname" . }}
-  namespace: {{ .Release.Namespace }}
+  name: oauth-refresher
+  namespace: default
 roleRef:
   kind: ClusterRole
-  name: {{ include "oauth-refresher.fullname" . }}
+  name: oauth-refresher
   apiGroup: rbac.authorization.k8s.io
