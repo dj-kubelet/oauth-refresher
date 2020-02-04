@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -21,17 +22,19 @@ import (
 )
 
 var (
-	labelSelector string
-	clientID      string
-	clientSecret  string
-	authURL       string
-	tokenURL      string
-	conf          *oauth2.Config
-	clientset     *kubernetes.Clientset
+	labelSelector   string
+	clientID        string
+	clientSecret    string
+	authURL         string
+	tokenURL        string
+	conf            *oauth2.Config
+	clientset       *kubernetes.Clientset
+	refreshInterval int
 )
 
 func setup() {
 	flag.StringVar(&labelSelector, "labelSelector", "dj-kubelet.com/oauth-refresher=spotify", "")
+	flag.IntVar(&refreshInterval, "refreshInterval", 600, "")
 	flag.Parse()
 
 	ok := false
@@ -102,14 +105,14 @@ func refresh() {
 func refreshSingle(secret apiv1.Secret) {
 	log.Printf("Starting refresh of: %s/%s", secret.Namespace, secret.Name)
 
-	// Reconstruct Oauth2 object that has expired
+	// Reconstruct an Oauth2 object
 	token := &oauth2.Token{
 		AccessToken:  string(secret.Data["accesstoken"]),
 		RefreshToken: string(secret.Data["refreshtoken"]),
 		Expiry:       time.Now(),
 	}
 
-	newToken, err := conf.TokenSource(oauth2.NoContext, token).Token()
+	newToken, err := conf.TokenSource(context.TODO(), token).Token()
 	if err != nil {
 		log.Fatalln(err)
 	}
@@ -167,7 +170,7 @@ func main() {
 	// perform initial refresh
 	refresh()
 
-	ticker := time.NewTicker(10 * time.Minute)
+	ticker := time.NewTicker(time.Duration(refreshInterval) * time.Second)
 	quit := make(chan bool)
 	go func() {
 		for {
