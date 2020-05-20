@@ -84,14 +84,14 @@ type patchOperation struct {
 }
 
 func refresh() {
-	namespaces, err := clientset.CoreV1().Namespaces().List(metav1.ListOptions{})
+	namespaces, err := clientset.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		log.Printf("Failed to list namespaces: %+v", err)
 		return
 	}
 
 	for _, ns := range namespaces.Items {
-		secrets, err := clientset.CoreV1().Secrets(ns.Name).List(metav1.ListOptions{LabelSelector: labelSelector})
+		secrets, err := clientset.CoreV1().Secrets(ns.Name).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
 		if err != nil {
 			log.Printf("Failed to list secrets: %+v", err)
 			continue
@@ -119,7 +119,7 @@ func refreshSingle(secret apiv1.Secret) {
 
 	if newToken.AccessToken != token.AccessToken {
 		token = newToken
-		log.Println("Access token has changed")
+		log.Printf("Access token updated in %s/%s", secret.Namespace, secret.Name)
 	}
 
 	if clientset != nil {
@@ -154,7 +154,7 @@ func refreshSingle(secret apiv1.Secret) {
 		if err != nil {
 			fmt.Println(err)
 		}
-		fin, err := clientset.CoreV1().Secrets(secret.Namespace).Patch(secret.Name, types.JSONPatchType, raw)
+		fin, err := clientset.CoreV1().Secrets(secret.Namespace).Patch(context.TODO(), secret.Name, types.JSONPatchType, raw, metav1.PatchOptions{})
 		if err == nil {
 			log.Printf("Patched secret %s/%s", secret.Namespace, secret.Name)
 		} else {
