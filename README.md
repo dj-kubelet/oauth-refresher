@@ -44,7 +44,7 @@ CLIENT_SECRET=aaa
 docker build -t oauth-refresher .
 
 # Load image to kind nodes
-kind load docker-image oauth-refresher
+kind load docker-image --name dj-kubelet oauth-refresher
 
 # Create namespace and apply kustomized deployment
 kubectl create namespace oauth-refresher
