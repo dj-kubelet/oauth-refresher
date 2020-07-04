@@ -21,10 +21,10 @@ data:
   refreshtoken: d29ybGQK
 
 ```
-You'd run `oauth-refresher` with a matching `labelSelector` to have it refresh the token every 10 minutes.
+You'd run `oauth-refresher` with a matching `labelKey` to have it refresh the token every 10 minutes.
 
 ```bash
-./oauth-refresher --labelSelector=dj-kubelet.com/oauth-refresher=spotify --refreshInterval=600
+./oauth-refresher --labelKey=dj-kubelet.com/oauth-refresher --refreshInterval=600
 ```
 
 Configuration of the OAuth 2.0 client is passed with environment variables.

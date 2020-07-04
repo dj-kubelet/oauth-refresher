@@ -27,8 +27,6 @@ spec:
         - name: oauth-refresher
           image: "djkubelet/oauth-refresher:latest"
           imagePullPolicy: IfNotPresent
-          args:
-          - --labelSelector=dj-kubelet.com/oauth-refresher=spotify
           env:
           - name: CLIENT_ID
             valueFrom:

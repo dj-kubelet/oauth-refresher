@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
 	"golang.org/x/oauth2"
@@ -16,13 +14,16 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
 var (
-	labelSelector   string
+	labelKey        string
 	clientID        string
 	clientSecret    string
 	authURL         string
@@ -33,7 +34,7 @@ var (
 )
 
 func setup() {
-	flag.StringVar(&labelSelector, "labelSelector", "dj-kubelet.com/oauth-refresher=spotify", "")
+	flag.StringVar(&labelKey, "labelKey", "dj-kubelet.com/oauth-refresher", "")
 	flag.IntVar(&refreshInterval, "refreshInterval", 600, "")
 	flag.Parse()
 
@@ -83,26 +84,24 @@ type patchOperation struct {
 	Value interface{} `json:"value,omitempty"`
 }
 
-func refresh() {
-	namespaces, err := clientset.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
-	if err != nil {
-		log.Printf("Failed to list namespaces: %+v", err)
-		return
-	}
-
-	for _, ns := range namespaces.Items {
-		secrets, err := clientset.CoreV1().Secrets(ns.Name).List(context.TODO(), metav1.ListOptions{LabelSelector: labelSelector})
-		if err != nil {
-			log.Printf("Failed to list secrets: %+v", err)
-			continue
-		}
-		for _, secret := range secrets.Items {
-			refreshSingle(secret)
-		}
-	}
+func createSecretInformer(factory informers.SharedInformerFactory, resyncPeriod time.Duration, filter func(*apiv1.Secret) bool, onUpdate func(*apiv1.Secret)) cache.SharedIndexInformer {
+	informer := factory.Core().V1().Secrets().Informer()
+	informer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
+		FilterFunc: func(obj interface{}) bool {
+			return filter(obj.(*apiv1.Secret))
+		},
+		Handler: cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				onUpdate(obj.(*apiv1.Secret))
+			},
+			UpdateFunc: func(_, obj interface{}) {
+				onUpdate(obj.(*apiv1.Secret))
+			},
+		}}, resyncPeriod)
+	return informer
 }
 
-func refreshSingle(secret apiv1.Secret) {
+func refreshSingle(secret *apiv1.Secret) {
 	log.Printf("Starting refresh of: %s/%s", secret.Namespace, secret.Name)
 
 	// Reconstruct an Oauth2 object
@@ -114,7 +113,8 @@ func refreshSingle(secret apiv1.Secret) {
 
 	newToken, err := conf.TokenSource(context.TODO(), token).Token()
 	if err != nil {
-		log.Fatalln(err)
+		log.Println(err)
+		return
 	}
 
 	if newToken.AccessToken != token.AccessToken {
@@ -131,13 +131,8 @@ func refreshSingle(secret apiv1.Secret) {
 			},
 			patchOperation{
 				Op:    "add",
-				Path:  "/stringData/accesstoken",
-				Value: token.AccessToken,
-			},
-			patchOperation{
-				Op:    "add",
-				Path:  "/stringData/refreshtoken",
-				Value: token.RefreshToken,
+				Path:  "/stringData/updated",
+				Value: time.Now().Format(time.RFC3339),
 			},
 			patchOperation{
 				Op:    "add",
@@ -146,13 +141,19 @@ func refreshSingle(secret apiv1.Secret) {
 			},
 			patchOperation{
 				Op:    "add",
-				Path:  "/stringData/updated",
-				Value: time.Now().Format(time.RFC3339),
+				Path:  "/stringData/accesstoken",
+				Value: token.AccessToken,
+			},
+			patchOperation{
+				Op:    "add",
+				Path:  "/stringData/refreshtoken",
+				Value: token.RefreshToken,
 			},
 		}
 		raw, err := json.Marshal(patch)
 		if err != nil {
 			fmt.Println(err)
+			return
 		}
 		fin, err := clientset.CoreV1().Secrets(secret.Namespace).Patch(context.TODO(), secret.Name, types.JSONPatchType, raw, metav1.PatchOptions{})
 		if err == nil {
@@ -160,6 +161,7 @@ func refreshSingle(secret apiv1.Secret) {
 		} else {
 			fmt.Println(err)
 			fmt.Println(fin)
+			return
 		}
 	}
 }
@@ -167,28 +169,30 @@ func refreshSingle(secret apiv1.Secret) {
 func main() {
 	setup()
 
-	// perform initial refresh
-	refresh()
-
-	ticker := time.NewTicker(time.Duration(refreshInterval) * time.Second)
-	quit := make(chan bool)
-	go func() {
-		for {
-			select {
-			case <-ticker.C:
-				refresh()
-			case <-quit:
-				ticker.Stop()
-				return
-			}
+	factory := informers.NewSharedInformerFactory(clientset, time.Hour*24)
+	secretInformer := createSecretInformer(factory, time.Second*time.Duration(refreshInterval), func(secret *apiv1.Secret) bool {
+		if _, ok := secret.ObjectMeta.Labels[labelKey]; !ok {
+			return false
 		}
-	}()
-
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
-	<-signalChan
-
-	log.Println("Shutdown signal received, exiting...")
-
-	quit <- true
+		str := string(secret.Data["updated"])
+		t, err := time.Parse(time.RFC3339, str)
+		if err != nil {
+			fmt.Println(err)
+		}
+		// One mintute cooldown to avoid infinite update loops
+		if time.Since(t) < time.Second*60 {
+			return false
+		}
+		log.Printf("Secret %s/%s updated %s ago.", secret.Namespace, secret.Name, time.Since(t))
+		return true
+	}, refreshSingle)
+	stopper := make(chan struct{})
+	defer close(stopper)
+	defer runtime.HandleCrash()
+	go secretInformer.Run(stopper)
+	if !cache.WaitForCacheSync(stopper, secretInformer.HasSynced) {
+		runtime.HandleError(fmt.Errorf("Timed out waiting for caches to sync"))
+		return
+	}
+	<-stopper
 }
