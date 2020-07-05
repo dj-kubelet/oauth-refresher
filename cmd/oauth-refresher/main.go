@@ -78,12 +78,6 @@ func setup() {
 	clientset = kubernetes.NewForConfigOrDie(config)
 }
 
-type patchOperation struct {
-	Op    string      `json:"op"`
-	Path  string      `json:"path"`
-	Value interface{} `json:"value,omitempty"`
-}
-
 func createSecretInformer(factory informers.SharedInformerFactory, resyncPeriod time.Duration, filter func(*apiv1.Secret) bool, onUpdate func(*apiv1.Secret)) cache.SharedIndexInformer {
 	informer := factory.Core().V1().Secrets().Informer()
 	informer.AddEventHandlerWithResyncPeriod(cache.FilteringResourceEventHandler{
@@ -142,7 +136,6 @@ func refreshSingle(secret *apiv1.Secret) {
 		fmt.Println(err)
 		return
 	}
-	log.Printf("Patch: %s", raw)
 	fin, err := clientset.CoreV1().Secrets(secret.Namespace).Patch(context.TODO(), secret.Name, types.StrategicMergePatchType, raw, metav1.PatchOptions{})
 	if err == nil {
 		log.Printf("Patched secret %s/%s", secret.Namespace, secret.Name)
@@ -161,8 +154,7 @@ func main() {
 		if _, ok := secret.ObjectMeta.Labels[labelKey]; !ok {
 			return false
 		}
-		str := string(secret.Data["updated"])
-		t, err := time.Parse(time.RFC3339, str)
+		t, err := time.Parse(time.RFC3339, string(secret.Data["updated"]))
 		if err != nil {
 			fmt.Println(err)
 		}
