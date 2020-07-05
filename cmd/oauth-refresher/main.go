@@ -102,8 +102,8 @@ func createSecretInformer(factory informers.SharedInformerFactory, resyncPeriod 
 }
 
 type SecretData struct {
-	AccessToken  string    `json:"accesstoken"`
-	RefreshToken string    `json:"refreshtoken"`
+	AccessToken  string    `json:"access_token"`
+	RefreshToken string    `json:"refresh_token"`
 	Expiry       time.Time `json:"expiry"`
 	Updated      time.Time `json:"updated"`
 }
@@ -113,8 +113,8 @@ func refreshSingle(secret *apiv1.Secret) {
 
 	// Reconstruct an Oauth2 object
 	token := &oauth2.Token{
-		AccessToken:  string(secret.Data["accesstoken"]),
-		RefreshToken: string(secret.Data["refreshtoken"]),
+		AccessToken:  string(secret.Data["access_token"]),
+		RefreshToken: string(secret.Data["refresh_token"]),
 		Expiry:       time.Now(),
 	}
 

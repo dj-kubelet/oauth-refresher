@@ -17,8 +17,8 @@ metadata:
     dj-kubelet.com/oauth-refresher: spotify
 type: Opaque
 data:
-  accesstoken: aGVsbG8K
-  refreshtoken: d29ybGQK
+  access_token: aGVsbG8K
+  refresh_token: d29ybGQK
 
 ```
 You'd run `oauth-refresher` with a matching `labelKey` to have it refresh the token every 10 minutes.
