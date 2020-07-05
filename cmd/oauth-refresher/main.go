@@ -101,6 +101,13 @@ func createSecretInformer(factory informers.SharedInformerFactory, resyncPeriod 
 	return informer
 }
 
+type SecretData struct {
+	AccessToken  string    `json:"accesstoken"`
+	RefreshToken string    `json:"refreshtoken"`
+	Expiry       time.Time `json:"expiry"`
+	Updated      time.Time `json:"updated"`
+}
+
 func refreshSingle(secret *apiv1.Secret) {
 	log.Printf("Starting refresh of: %s/%s", secret.Namespace, secret.Name)
 
@@ -122,47 +129,27 @@ func refreshSingle(secret *apiv1.Secret) {
 		log.Printf("Access token updated in %s/%s", secret.Namespace, secret.Name)
 	}
 
-	if clientset != nil {
-		patch := []patchOperation{
-			patchOperation{
-				Op:    "add",
-				Path:  "/stringData",
-				Value: make(map[string]string),
-			},
-			patchOperation{
-				Op:    "add",
-				Path:  "/stringData/updated",
-				Value: time.Now().Format(time.RFC3339),
-			},
-			patchOperation{
-				Op:    "add",
-				Path:  "/stringData/expiry",
-				Value: token.Expiry.Format(time.RFC3339),
-			},
-			patchOperation{
-				Op:    "add",
-				Path:  "/stringData/accesstoken",
-				Value: token.AccessToken,
-			},
-			patchOperation{
-				Op:    "add",
-				Path:  "/stringData/refreshtoken",
-				Value: token.RefreshToken,
-			},
-		}
-		raw, err := json.Marshal(patch)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		fin, err := clientset.CoreV1().Secrets(secret.Namespace).Patch(context.TODO(), secret.Name, types.JSONPatchType, raw, metav1.PatchOptions{})
-		if err == nil {
-			log.Printf("Patched secret %s/%s", secret.Namespace, secret.Name)
-		} else {
-			fmt.Println(err)
-			fmt.Println(fin)
-			return
-		}
+	secretData := SecretData{
+		AccessToken:  token.AccessToken,
+		RefreshToken: token.RefreshToken,
+		Expiry:       token.Expiry,
+		Updated:      time.Now(),
+	}
+	raw, err := json.Marshal(struct {
+		StringData SecretData `json:"stringData"`
+	}{secretData})
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	log.Printf("Patch: %s", raw)
+	fin, err := clientset.CoreV1().Secrets(secret.Namespace).Patch(context.TODO(), secret.Name, types.StrategicMergePatchType, raw, metav1.PatchOptions{})
+	if err == nil {
+		log.Printf("Patched secret %s/%s", secret.Namespace, secret.Name)
+	} else {
+		fmt.Println(err)
+		fmt.Println(fin)
+		return
 	}
 }
 
